@@ -4,8 +4,8 @@ from Queue import Queue
 from copy import deepcopy
 #import numpy as np
 
-IsDebug = True 
-GraphEnabled = True 
+IsDebug = False 
+GraphEnabled = False 
 
 AllNodeList = []
 Adj_Matrix = [[]]
@@ -161,14 +161,7 @@ def myprint_graph(adjacency_matrix, name):
     # now if you decide you don't want labels because your graph
     # is too busy just do: nx.draw_networkx(G,with_labels=False)
     #plt.show()
-    plt.savefig('topo_'+name+'.pdf')
-
-def myprint_graphfile(adjacency_matrix, name):
-    if not IsDebug:
-        return
-    if not GraphEnabled:
-        return
-      
+    plt.savefig('topo_'+name+'.png')
 
 def SFENG(Nodes, mlinks, seed):
     Net = [[0 for col in range(Nodes)] for row in range(Nodes)]
