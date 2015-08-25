@@ -4,13 +4,15 @@ from Queue import Queue
 from copy import deepcopy
 #import numpy as np
 
-IsDebug = False 
-GraphEnabled = False 
+IsDebug = True 
+GraphEnabled = True 
 
 AllNodeList = []
 Adj_Matrix = [[]]
 SDNList = []
 NodeNum = 10
+AddNum = 10
+ValidNodeNum = -1
 IsChanged = False
 class path:
     def __init__(self, From):
@@ -39,7 +41,7 @@ class node:
 
     def bgp_update(self):
         global IsChanged
-        for i in range(NodeNum):
+        for i in range(ValidNodeNum):
             ChangedInThisLoop = False
             if i in self.AdjList:#avoid handling direct neighbor, waste time
                 continue
@@ -71,9 +73,10 @@ class SDN:
         self.AsList = []
         SDNList.append(self)
         self.create(SdnSize)
+        print "SDN created"
     def create(self, SdnSize): #keep adding new ASes
         MyQueue = Queue(-1)
-        StartNodeID = int(random()*NodeNum)
+        StartNodeID = int(random()*ValidNodeNum)
         print "# R# StartID: ", StartNodeID
         self.add_AS(StartNodeID)
         MyQueue.put(StartNodeID)
@@ -123,8 +126,9 @@ def myprint_path(ID=-1):
     print 'begin to print path:'
     if ID == -1:
         print '============================'
-        for ID in range(NodeNum):
+        for ID in range(ValidNodeNum):
             print '%d ------' %ID
+            print len(AllNodeList)
             for i in range(len(AllNodeList[ID].NewPathVector)):
                 print '(%d): ' %i,
                 if AllNodeList[ID].NewPathVector[i].Validity == False:
@@ -163,6 +167,32 @@ def myprint_graph(adjacency_matrix, name):
     #plt.show()
     plt.savefig('topo_'+name+'.png')
 
+def myprint_graphfile(adjacency_matrix, name):
+    if not IsDebug:
+        return
+    if not GraphEnabled:
+        return
+    graphfile = open(name,'w')
+    graphfile.write("graph G{\n");
+    graphfile.write("   node [style=filled]\n\n")
+    print "SDN ---: %d" %len(SDNList)
+    for i in range(AddNum):
+        graphfile.write("   %d [color=green]\n" %(NodeNum-AddNum+i))
+    graphfile.write("\n")
+    for sdn in SDNList:
+        print "enter sdn"
+        for As in sdn.AsList:
+            graphfile.write("   %d [color= red]\n" %As)
+    graphfile.write("\n") 
+    for i in range(NodeNum):
+        for j in range(i):
+            if adjacency_matrix[i][j]:
+                graphfile.write("   %d -- %d\n" %(i,j))
+    graphfile.write("\n}")
+    graphfile.close()
+
+    
+
 def SFENG(Nodes, mlinks, seed):
     Net = [[0 for col in range(Nodes)] for row in range(Nodes)]
     pos = len(seed)
@@ -174,14 +204,13 @@ def SFENG(Nodes, mlinks, seed):
         sumlinks = sumlinks + sum(Net[i])
     while pos < Nodes:
         linkage = 0
-        if mlinks == -1:
-            tmp = random()
-            if tmp < 0.6:#override mlinks.
-                mlinks = 1
-            elif tmp < 0.9:
-                mlinks = 2
-            else:
-                mlinks = 3
+        tmp = random()
+        if tmp < 0.8:#override mlinks.
+            mlinks = 1
+        elif tmp < 0.95:
+            mlinks = 2
+        else:
+            mlinks = 3
         while linkage <> mlinks:
             rnode = int(random()*pos)
             deg = sum(Net[rnode]) * 2
@@ -210,7 +239,7 @@ def converge_process():
         LoopTimes = LoopTimes + 1
         if IsChanged == False:
             break
-    myprint_path()
+    #myprint_path()
     return LoopTimes
 
 def inject_up(i):
@@ -238,19 +267,22 @@ if __name__ == "__main__":
     myseed =[[0,1,0,0,1],[1,0,0,1,0],[0,0,0,1,0],[0,1,1,0,0],[1,0,0,0,0]] 
     Adj_Matrix = SFENG(NodeNum, -1, myseed)
     myprint_matrix(Adj_Matrix)
-    myprint_graph(Adj_Matrix,'0')
+    #myprint_graph(Adj_Matrix,'0')
     
     for i in range(NodeNum-10):
         CurrentNode = node(i)
         for j in range(NodeNum-10):
             if Adj_Matrix[i][j]:
                 CurrentNode.add_adj(j)
-    #print AllNodeList
+    print len(AllNodeList)
+    ValidNodeNum = len(AllNodeList) 
     print "initial converge time: # %d" % converge_process()
-    SDN(0,int(NodeNum*SdnRatio))
-    for i in range(10):
-        inject_up(NodeNum - 10 + i)
+    SDN(0,int(ValidNodeNum*SdnRatio))
+    for i in range(AddNum):
+        inject_up(NodeNum - AddNum + i)
+        ValidNodeNum = len(AllNodeList)
         print "update converge time: # %d" %converge_process()
         print "# Update #%d over" %i
+    myprint_graphfile(Adj_Matrix, "tmp")
 
 
