@@ -192,11 +192,11 @@ int main(int argc, char * argv[]){
 				AllNodeVector[i]->add_adj(j);
 		}
 	}
-	fprintf(stderr,"initial converge after %d times\n",converge_process(0));
+	fprintf(stderr,"initial converge time: %d\n",converge_process(0));
 	MySDN = new SDN((u_s)(ValidNodeNum * SDNRatio));
 	for( u_s i = 0; i < RepeatTimes; i ++){
 		inject_up(ValidNodeNum);
-		fprintf(stderr,"converged after %d times\n",converge_process(1));
+		fprintf(stderr,"update converge time: %d\n",converge_process(1));
 	}
 #ifdef DEBUG
 	myprint_path();
