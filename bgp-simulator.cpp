@@ -81,7 +81,7 @@ class node{
 						if(find(AllNodeVector[*Adj]->OldPathVector[i].Path.begin(), AllNodeVector[*Adj]->OldPathVector[i].Path.end(),ID) != AllNodeVector[*Adj]->OldPathVector[i].Path.end())
 								continue;
 						if( AllNodeVector[*Adj]->OldPathVector[i].Path.size() + 1 < TmpPathLength){
-								TmpPathLength = AllNodeVector[*Adj]->OldPathVector[i].Path.size();
+								TmpPathLength = AllNodeVector[*Adj]->OldPathVector[i].Path.size() + 1;
 								MarkedID = *Adj;
 								ChangedInThisLoop = 1;
 						}
