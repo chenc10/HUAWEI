@@ -26,14 +26,15 @@ int RandSeed = 0;
 float SDNRatio = -0.1;
 int LoopTimes = 0;
 int PathInMemo = 0;
-int Threshold = 15000;
 
 SDN * MySDN;
 vector<node *> AllNodeVector;
 mMap *Map;
+bool ** AdjMatrix;
 
 void myprint_path();
 u_s converge_process(bool sign);
+void SFENG(bool ** AdjMatrix, bool MySeed[5][5]);
 void inject_up(u_s );
 void create_adj();
 
@@ -81,17 +82,14 @@ class mMap{
 	public:
 		vector<vector<path> *> MOldPathDB;
 		vector<vector<path> *> MNewPathDB;
-		vector<u_s> LeftTimesVector;
-		list<u_s> OInMemoList;
-		list<u_s> NInMemoList;
-		mMap():MOldPathDB(NodeNum,NULL),MNewPathDB(NodeNum,NULL),LeftTimesVector(NodeNum, 0){
+		vector<int> LeftTimesVector;
+		mMap():MOldPathDB(NodeNum,NULL),MNewPathDB(NodeNum,NULL),LeftTimesVector(NodeNum, -1){
 		}
 		vector<path> * get(u_s ID){
 			if(MOldPathDB[ID])
 				return MOldPathDB[ID];
-			sprintf(name, "Old/%d", ID);
+			sprintf(name, "%d", ID);
 			strcat(name,".pathdata");
-			fprintf(stderr,"			read %s from disk\n", name);
 			FILE * fp;
 			fp = fopen(name, "r");
 			if(fp == NULL){
@@ -124,34 +122,24 @@ class mMap{
 			}
 			fclose(fp);
 			PathInMemo ++;
-			OInMemoList.push_back(ID);
-			if(PathInMemo > Threshold)
-				reduce_memo();
 			return MOldPathDB[ID];
 		}
-		void reduce_memo(){
-			while(!NInMemoList.empty() && PathInMemo > Threshold - 500 + 1){ 
-				write_to_disk(NInMemoList.front(), 1);
-				NInMemoList.pop_front();
-			}
-			while(!OInMemoList.empty() && PathInMemo > Threshold - 500 + 1){
-				write_to_disk(OInMemoList.front(), 0);
-				OInMemoList.pop_front();
+		void check(u_s ID){
+			LeftTimesVector[ID] --;
+			if(!LeftTimesVector[ID]){
+				delete MOldPathDB[ID];
+				MOldPathDB[ID] = NULL;
+				PathInMemo --;
 			}
 		}
-		void write_to_disk(u_s ID, bool sign){
-			vector<path> * PathVector;
-			if(sign){
-				sprintf(name, "New/%d", ID);
-				PathVector = MNewPathDB[ID];
-				MNewPathDB[ID] = NULL;
-			}else{
-				sprintf(name, "Old/%d", ID);
-				PathVector = MOldPathDB[ID];
-				MOldPathDB[ID] = NULL;
+		void record(u_s ID, vector<path>* & PathVector){
+			if(PathInMemo < 10){
+				MNewPathDB[ID] = PathVector;
+				PathVector = NULL;
+				return;
 			}
+			sprintf(name, "%d", ID);
 			strcat(name,".pathdata");
-			fprintf(stderr,"				write %s to disk\n", name);
 			FILE * fp;
 			fp = fopen(name, "w");
 			if(fp == NULL){
@@ -160,7 +148,6 @@ class mMap{
 			}
 
 			for( u_s j = 0; j < NodeNum; j ++){
-				if(! (*(PathVector))[j].Validity)
 				if(! (*(PathVector))[j].Validity)
 					fprintf(fp,"I\n");	
 				else{
@@ -172,36 +159,14 @@ class mMap{
 			fclose(fp);
 			delete PathVector;
 			PathVector = NULL;
+			MNewPathDB[ID] = NULL;
 			PathInMemo --;
 		}
-		void check(u_s ID){
-			LeftTimesVector[ID] --;
-			if(!LeftTimesVector[ID]){
-				delete MOldPathDB[ID];
-				MOldPathDB[ID] = NULL;
-				OInMemoList.remove(ID);
-				PathInMemo --;
-				fprintf(stderr,"			delete %d from memo\n", ID);
-			}
-		}
-		void record(u_s ID, vector<path>* & PathVector){
-			fprintf(stderr,"  			currently %d pathINmemo \n", PathInMemo);
-			NInMemoList.push_back(ID);
-			MNewPathDB[ID] = PathVector;
-			PathVector = NULL;
-			if(PathInMemo > Threshold)
-				reduce_memo();	
-		}
 		void roll(u_s ID){
-			system("rm -rf Old");
-			system("mv New Old");
-			system("mkdir New");
 			LeftTimesVector[ID] = AllNodeVector[ID]->AdjList.size();
 			LeftTimesVector[ID] ++;
 			MOldPathDB[ID] = MNewPathDB[ID];
 			MNewPathDB[ID] = NULL;
-			OInMemoList = NInMemoList;
-			NInMemoList.clear();
 		}	
 };
 
@@ -314,8 +279,7 @@ int main(int argc, char * argv[]){
 		fprintf(stderr,"error! not enough args\n");
 		exit(-1);
 	}
-	system("mkdir -p New");
-	system("mkdir -p Old");
+	//NodeNum = atoi(argv[1]);
 	SDNRatio = atoi(argv[2])/1000.0;
 	RandSeed = atoi(argv[3]);
 	RepeatTimes = atoi(argv[4]);
@@ -326,14 +290,36 @@ int main(int argc, char * argv[]){
 	//ValidNodeNum = NodeNum - RepeatTimes;
 	srand(RandSeed);
 	AllNodeVector.assign(NodeNum, NULL);
+	bool MySeed[5][5] = {{0,1,0,0,1},
+						{1,0,0,1,0},
+						{0,0,0,1,0},
+						{0,1,1,0,0},
+						{1,0,0,0,0}	};
+	AdjMatrix = new bool * [NodeNum];
+	for( int i = 0; i < NodeNum; i ++){
+		AdjMatrix[i] = new bool [NodeNum];
+		memset(AdjMatrix[i],0,NodeNum*sizeof(bool));
+	}
+	SFENG(AdjMatrix,MySeed);
 #ifdef DEBUG
+	for(u_s i = 0; i < NodeNum; i ++){
+		for( u_s j = 0; j < NodeNum; j++)
+			fprintf(stderr,"%d ", AdjMatrix[i][j]);
+		fprintf(stderr,"\n");
+	}
 #endif
 	create_adj();
+//	for( u_s i = 0; i < ValidNodeNum; i ++){
+//		AllNodeVector[i] = new node(i);
+//		for( u_s j = 0; j < ValidNodeNum; j ++){
+//			if(AdjMatrix[i][j])
+//				AllNodeVector[i]->add_adj(j);
+//		}
+//		Map->record(i,AllNodeVector[i]->NewPathVector);
+//	}
 	for(u_s i = 0; i < ValidNodeNum; i ++)
 		Map->roll(i);
-	fprintf(stderr,"\n\n first roll over\n\n");
 	fprintf(stderr,"initial converge time: %d\n",converge_process(0));
-	exit(-1);
 	MySDN = new SDN((u_s)(ValidNodeNum * SDNRatio));
 	for( u_s i = 0; i < RepeatTimes; i ++){
 		inject_up(ValidNodeNum);
@@ -348,7 +334,7 @@ int main(int argc, char * argv[]){
 void inject_up(u_s p){
 	AllNodeVector[p] = new node(p);
 	for( u_s i = 0; i < p; i ++){
-		if(1){
+		if(AdjMatrix[i][p]){
 			AllNodeVector[i]->NewPathVector = Map->get(i);	
 			AllNodeVector[p]->add_adj(i);
 			AllNodeVector[i]->add_adj(p);
@@ -366,12 +352,9 @@ void inject_up(u_s p){
 u_s converge_process(bool sign){
 	LoopTimes = 0;
 	while(1){
-		fprintf(stderr," LoopTimes: %d\n", LoopTimes);
 		IsChanged = 0;
-		for(u_s i=0; i < ValidNodeNum; i++){
+		for(u_s i=0; i < ValidNodeNum; i++)
 			AllNodeVector[i]->bgp_update();
-			fprintf(stderr,"	-LP:%d	bgpupdate: %d over\n",LoopTimes, i);
-		}
 		for(u_s i=0; i < ValidNodeNum; i++)
 			Map->roll(i);
 		if(sign)
@@ -400,6 +383,45 @@ void myprint_path(){
 	}
 }
 
+void SFENG(bool ** AdjMatrix, bool MySeed[5][5]){
+	int sumlinks = 0;
+	for(int i = 0; i < 5; i ++)
+		for(int j = 0; j < 5; j++){
+			AdjMatrix[i][j] = MySeed[i][j];
+			sumlinks += MySeed[i][j];
+		}
+	int pos = 5;
+	int rnode = 0, deg = 0;
+	int linkage;
+	float rvalue, rlink; 
+	int mlinks = 1;
+	while(pos < NodeNum){
+		linkage = 0;
+		rvalue = rand()%100/100.0;
+		if(rvalue < 0.8)
+			mlinks = 1;
+		else if(rvalue < 0.95)
+			mlinks = 2;
+		else 
+			mlinks = 3;
+		while(linkage<mlinks){
+			rnode = (int)(rand()%100/100.0*pos);
+			deg = 0;
+			for( int i = 0; i < pos; i ++){
+			   	deg += AdjMatrix[rnode][i];
+			}
+			deg *= 2;
+			rlink = rand()%100/100.0;
+			if(rlink < float(deg)/sumlinks && AdjMatrix[rnode][pos]!=1){
+				AdjMatrix[pos][rnode] = 1;
+				AdjMatrix[rnode][pos] = 1;
+				linkage = linkage + 1;
+				sumlinks = sumlinks + 2;
+			}
+		}
+		pos ++;
+	}
+}	
 void create_adj(){
 	FILE * fp;
 	fp = fopen("real.data", "r");
@@ -409,14 +431,13 @@ void create_adj(){
 	}
 	char * tok = NULL;
 	for( u_s i = 0; i < ValidNodeNum; i ++){
-		fprintf(stderr,"create_adj: %d\n", i);
 		fgets(IBuffer, 70000, fp);
 		tok = strtok(IBuffer, "\t");
 		AllNodeVector[i] = new node(i);
 		while(tok = strtok(NULL,"\t")){
+			fprintf(stderr," %s", tok);
 			AllNodeVector[i]->add_adj(atoi(tok));
 		}
 		Map->record(i,AllNodeVector[i]->NewPathVector);
 	}
-	fclose(fp);
 }
