@@ -18,15 +18,16 @@ class node;
 class SDN;
 class mMap;
 
-u_s NodeNum = 43548;
-u_s ValidNodeNum = 43548;
+u_s NodeNum = 2749;
+u_s ValidNodeNum = 2749;
 bool IsChanged = 0;
 u_s RepeatTimes = -1;
 int RandSeed = 0;
 float SDNRatio = -0.1;
 int LoopTimes = 0;
 int PathInMemo = 0;
-int Threshold = 15000;
+int Threshold = 1500;
+int BatchNum = 500;
 
 SDN * MySDN;
 vector<node *> AllNodeVector;
@@ -91,7 +92,7 @@ class mMap{
 				return MOldPathDB[ID];
 			sprintf(name, "Old/%d", ID);
 			strcat(name,".pathdata");
-			fprintf(stderr,"			read %s from disk\n", name);
+			//fprintf(stderr,"			read %s from disk\n", name);
 			FILE * fp;
 			fp = fopen(name, "r");
 			if(fp == NULL){
@@ -123,18 +124,19 @@ class mMap{
 				}
 			}
 			fclose(fp);
+			//fprintf(stderr,"			finish reading %s from disk\n", name);
 			PathInMemo ++;
 			OInMemoList.push_back(ID);
-			if(PathInMemo > Threshold)
+			if(PathInMemo >= Threshold)
 				reduce_memo();
 			return MOldPathDB[ID];
 		}
 		void reduce_memo(){
-			while(!NInMemoList.empty() && PathInMemo > Threshold - 500 + 1){ 
+			while(!NInMemoList.empty() && PathInMemo > Threshold - BatchNum){ 
 				write_to_disk(NInMemoList.front(), 1);
 				NInMemoList.pop_front();
 			}
-			while(!OInMemoList.empty() && PathInMemo > Threshold - 500 + 1){
+			while(!OInMemoList.empty() && PathInMemo > Threshold - BatchNum){
 				write_to_disk(OInMemoList.front(), 0);
 				OInMemoList.pop_front();
 			}
@@ -151,7 +153,7 @@ class mMap{
 				MOldPathDB[ID] = NULL;
 			}
 			strcat(name,".pathdata");
-			fprintf(stderr,"				write %s to disk\n", name);
+			//fprintf(stderr,"				write %s to disk\n", name);
 			FILE * fp;
 			fp = fopen(name, "w");
 			if(fp == NULL){
@@ -160,7 +162,6 @@ class mMap{
 			}
 
 			for( u_s j = 0; j < NodeNum; j ++){
-				if(! (*(PathVector))[j].Validity)
 				if(! (*(PathVector))[j].Validity)
 					fprintf(fp,"I\n");	
 				else{
@@ -173,6 +174,7 @@ class mMap{
 			delete PathVector;
 			PathVector = NULL;
 			PathInMemo --;
+			//fprintf(stderr,"				 finish write %s to disk\n", name);
 		}
 		void check(u_s ID){
 			LeftTimesVector[ID] --;
@@ -189,34 +191,50 @@ class mMap{
 			NInMemoList.push_back(ID);
 			MNewPathDB[ID] = PathVector;
 			PathVector = NULL;
-			if(PathInMemo > Threshold)
+			if(PathInMemo >= Threshold)
 				reduce_memo();	
 		}
-		void roll(u_s ID){
+		void roll_all(){
+			fprintf(stderr,"enter roll\n");
 			system("rm -rf Old");
 			system("mv New Old");
 			system("mkdir New");
+			for(u_s ID = 0; ID < ValidNodeNum; ID ++){
+				LeftTimesVector[ID] = AllNodeVector[ID]->AdjList.size();
+				LeftTimesVector[ID] ++;
+				MOldPathDB[ID] = MNewPathDB[ID];
+				MNewPathDB[ID] = NULL;
+			}
+			//Here we assume that all the OldPathDB has been deleted (a result when everything goes well)
+			if(!OInMemoList.empty())
+				fprintf(stderr,"\n\nerror! OInMemoList not empty before roll\n\n\n");
+			OInMemoList = NInMemoList;
+			NInMemoList.clear();
+		}
+		void roll(u_s ID){
 			LeftTimesVector[ID] = AllNodeVector[ID]->AdjList.size();
 			LeftTimesVector[ID] ++;
 			MOldPathDB[ID] = MNewPathDB[ID];
 			MNewPathDB[ID] = NULL;
-			OInMemoList = NInMemoList;
-			NInMemoList.clear();
 		}	
 };
 
 void node::bgp_update(bool u_sign = 0){
 	bool ChangedInThisLoop;
 	u_s TmpPathLength;
+	u_s MarkedID;
 	OldPathVector = Map->get(ID); 
 	NewPathVector = new vector<path>(*OldPathVector);
 	PathInMemo ++;
 	vector<path> * TmpPathVector;
 	vector<path> * MarkedPathVector;
+	fprintf(stderr,"			 enter update: %d\n", ID);
 	for( u_s i = 0; i < ValidNodeNum; i ++){
+	//	fprintf(stderr,"			   within update: <%d -> %d>\n", ID, i);
 		ChangedInThisLoop = 0;
 		if(find(AdjList.begin(), AdjList.end(), i) != AdjList.end())	
 				continue;
+		OldPathVector = Map->get(ID); 
 		if(!(*OldPathVector)[i].Validity)
 				TmpPathLength = NodeNum + NodeNum;
 		else
@@ -233,11 +251,12 @@ void node::bgp_update(bool u_sign = 0){
 						continue;
 				if((*TmpPathVector)[i].Path.size() + 1 < TmpPathLength){
 						TmpPathLength = (*TmpPathVector)[i].Path.size() + 1;
-						MarkedPathVector = TmpPathVector;
+						MarkedID = *Adj;
 						ChangedInThisLoop = 1;
 				}
 		}
 		if(ChangedInThisLoop){
+				MarkedPathVector = Map->get(MarkedID);
 				(*NewPathVector)[i].Validity = 1;
 				(*NewPathVector)[i].Path = (*MarkedPathVector)[i].Path;
 				(*NewPathVector)[i].Path.push_back(ID);
@@ -329,8 +348,7 @@ int main(int argc, char * argv[]){
 #ifdef DEBUG
 #endif
 	create_adj();
-	for(u_s i = 0; i < ValidNodeNum; i ++)
-		Map->roll(i);
+	Map->roll_all();
 	fprintf(stderr,"\n\n first roll over\n\n");
 	fprintf(stderr,"initial converge time: %d\n",converge_process(0));
 	exit(-1);
@@ -372,8 +390,7 @@ u_s converge_process(bool sign){
 			AllNodeVector[i]->bgp_update();
 			fprintf(stderr,"	-LP:%d	bgpupdate: %d over\n",LoopTimes, i);
 		}
-		for(u_s i=0; i < ValidNodeNum; i++)
-			Map->roll(i);
+		Map->roll_all();
 		if(sign)
 			MySDN->local_converge();	
 		LoopTimes = LoopTimes + 1;
@@ -402,20 +419,26 @@ void myprint_path(){
 
 void create_adj(){
 	FILE * fp;
-	fp = fopen("real.data", "r");
+	fp = fopen("small.data", "r");
 	if(fp == NULL){
-		fprintf(stderr,"Error open real.data\n");
+		fprintf(stderr,"Error open small.data\n");
 		exit(-1);
 	}
 	char * tok = NULL;
-	for( u_s i = 0; i < ValidNodeNum; i ++){
+	for( u_s i = 0, j = 0; i < ValidNodeNum; i ++){
+		j = 0;
 		fprintf(stderr,"create_adj: %d\n", i);
 		fgets(IBuffer, 70000, fp);
 		tok = strtok(IBuffer, "\t");
 		AllNodeVector[i] = new node(i);
 		while(tok = strtok(NULL,"\t")){
+			if(tok[0] == 10)
+				continue;
 			AllNodeVector[i]->add_adj(atoi(tok));
+			j ++;
 		}
+		if(j > Threshold)
+			fprintf(stderr,"warning: Max Neighbor Num exceeds Buffer! Slow! Suggested: %d\n",j);
 		Map->record(i,AllNodeVector[i]->NewPathVector);
 	}
 	fclose(fp);
