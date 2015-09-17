@@ -9,6 +9,9 @@
 #include<stack>
 #include<string>
 #include<algorithm>
+#include<sys/stat.h>
+#include<sys/types.h>
+#include<unistd.h>
 
 using namespace std;
 typedef unsigned short u_s;
@@ -19,10 +22,10 @@ class node;
 class SDN;
 class mMap;
 
-//u_s NodeNum = 43548;
-u_s NodeNum = 2749;
-//u_s ValidNodeNum = 43548;
-u_s ValidNodeNum = 2749;
+u_s NodeNum = 43548;
+//u_s NodeNum = 2749;
+u_s ValidNodeNum = 43548;
+//u_s ValidNodeNum = 2749;
 bool IsChanged = 0;
 u_s RepeatTimes = -1;
 int RandSeed = 0;
@@ -32,7 +35,6 @@ int PathInMemo = 0;
 int Threshold = 20000;
 int BatchNum = 1000;
 
-u_s MaxPathInMemo = 0;
 
 SDN * MySDN;
 vector<node *> AllNodeVector;
@@ -197,8 +199,6 @@ class mMap{
 		}
 		void record(u_s ID, vector<path>* & PathVector){
 			//fprintf(stderr,"  			currently %d pathINmemo \n", PathInMemo);
-			if(PathInMemo > MaxPathInMemo)
-				MaxPathInMemo = PathInMemo;
 			NInMemoList.push_back(ID);
 			MNewPathDB[ID] = PathVector;
 			PathVector = NULL;
@@ -206,11 +206,11 @@ class mMap{
 				reduce_memo();	
 		}
 		void roll_all(){
-			fprintf(stderr,"enter roll\n");
-			fprintf(stderr,"  			--currently %d pathINmemo \n", PathInMemo);
-			system("rm -rf Old");
-			system("mv New Old");
-			system("mkdir New");
+			fprintf(stderr,"	enter roll\n");
+			sprintf(name,"Old%d",LoopTimes);
+			rename("Old", name);		
+			rename("New","Old");
+			mkdir("New",0700);
 			for(u_s ID = 0; ID < ValidNodeNum; ID ++){
 				AllNodeVector[ID] -> VisitType = 0;
 				LeftTimesVector[ID] = AllNodeVector[ID]->AdjList.size();
@@ -247,9 +247,7 @@ void node::bgp_update(bool u_sign = 0){
 	PathInMemo ++;
 	vector<path> * TmpPathVector;
 	vector<path> * MarkedPathVector;
-	fprintf(stderr,"	-enter update: %d\n", ID);
 	for( u_s i = 0; i < ValidNodeNum; i ++){
-	//	fprintf(stderr,"			   within update: <%d -> %d>\n", ID, i);
 		ChangedInThisLoop = 0;
 		if(find(AdjList.begin(), AdjList.end(), i) != AdjList.end())	
 				continue;
@@ -352,10 +350,14 @@ int main(int argc, char * argv[]){
 		fprintf(stderr,"error! not enough args\n");
 		exit(-1);
 	}
-	system("/bin/rm -rf New");
-	system("/bin/rm -rf Old");
-	system("mkdir -p New");
-	system("mkdir -p Old");
+	rename("Old","Old_before");
+	rename("New","New_before");
+//	system("/bin/rm -rf New");
+//	system("/bin/rm -rf Old");
+	mkdir("Old",0700);
+	mkdir("New",0700);
+//	system("mkdir -p New");
+//	system("mkdir -p Old");
 	SDNRatio = atoi(argv[2])/1000.0;
 	RandSeed = atoi(argv[3]);
 	RepeatTimes = atoi(argv[4]);
@@ -372,7 +374,6 @@ int main(int argc, char * argv[]){
 	Map->roll_all();
 	fprintf(stderr,"\n\n first roll over\n\n");
 	fprintf(stderr,"initial converge time: %d\n",converge_process(0));
-	fprintf(stderr,"max path in memo: %d\n", MaxPathInMemo);
 	exit(-1);
 	MySDN = new SDN((u_s)(ValidNodeNum * SDNRatio));
 	for( u_s i = 0; i < RepeatTimes; i ++){
@@ -461,7 +462,7 @@ void myprint_path(){
 
 void create_adj(){
 	FILE * fp;
-	fp = fopen("small.data", "r");
+	fp = fopen("real.data", "r");
 	if(fp == NULL){
 		fprintf(stderr,"Error open small.data\n");
 		exit(-1);
