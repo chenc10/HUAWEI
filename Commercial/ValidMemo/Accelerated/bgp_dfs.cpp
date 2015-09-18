@@ -6,8 +6,12 @@
 #include<memory.h>
 #include<vector>
 #include<list>
+#include<stack>
 #include<string>
 #include<algorithm>
+#include<sys/stat.h>
+#include<sys/types.h>
+#include<unistd.h>
 
 using namespace std;
 typedef unsigned short u_s;
@@ -18,19 +22,26 @@ class node;
 class SDN;
 class mMap;
 
-u_s NodeNum = 43548;
-u_s ValidNodeNum = 43548;
+//u_s NodeNum = 43548;
+u_s NodeNum = 2749;
+//u_s ValidNodeNum = 43548;
+u_s ValidNodeNum = 2749;
 bool IsChanged = 0;
 u_s RepeatTimes = -1;
 int RandSeed = 0;
 float SDNRatio = -0.1;
 int LoopTimes = 0;
 int PathInMemo = 0;
-int Threshold = 13000;
-int BatchNum = 500;
+int Threshold = 20000;
+int BatchNum = 1000;
+
 
 SDN * MySDN;
 vector<node *> AllNodeVector;
+vector<bool> ValidVector;
+vector<u_s> CNVector;
+vector<u_s> TmpPLVector;
+stack<u_s> Stack;
 mMap *Map;
 
 void myprint_path();
@@ -53,12 +64,15 @@ class node{
 		vector<u_s> AdjList;
 		vector<path> *OldPathVector;
 		vector<path> *NewPathVector;
+		char VisitType;
 		bool IsInSDN;
+
 		node(u_s myID){
 			OldPathVector = NULL;
 			NewPathVector = new vector<path>(NodeNum, path(myID));
 			PathInMemo ++;
 			ID = myID;
+			VisitType = 0;
 			IsInSDN = 0;
 		}
 		void add_adj(u_s myID){
@@ -92,7 +106,6 @@ class mMap{
 				return MOldPathDB[ID];
 			sprintf(name, "Old/%d", ID);
 			strcat(name,".pathdata");
-			//fprintf(stderr,"			read %s from disk\n", name);
 			FILE * fp;
 			fp = fopen(name, "r");
 			if(fp == NULL){
@@ -132,6 +145,7 @@ class mMap{
 			return MOldPathDB[ID];
 		}
 		void reduce_memo(){
+			fprintf(stderr,"  			currently %d pathINmemo, begin to reduce memo \n", PathInMemo);
 			while(!NInMemoList.empty() && PathInMemo > Threshold - BatchNum){ 
 				write_to_disk(NInMemoList.front(), 1);
 				NInMemoList.pop_front();
@@ -174,7 +188,7 @@ class mMap{
 			delete PathVector;
 			PathVector = NULL;
 			PathInMemo --;
-			fprintf(stderr,"				 finish write %s to disk\n", name);
+			//fprintf(stderr,"				 finish write %s to disk\n", name);
 		}
 		void check(u_s ID){
 			LeftTimesVector[ID] --;
@@ -187,7 +201,7 @@ class mMap{
 			}
 		}
 		void record(u_s ID, vector<path>* & PathVector){
-			fprintf(stderr,"  			currently %d pathINmemo \n", PathInMemo);
+			//fprintf(stderr,"  			currently %d pathINmemo \n", PathInMemo);
 			NInMemoList.push_back(ID);
 			MNewPathDB[ID] = PathVector;
 			PathVector = NULL;
@@ -195,11 +209,13 @@ class mMap{
 				reduce_memo();	
 		}
 		void roll_all(){
-			fprintf(stderr,"enter roll\n");
-			system("rm -rf Old");
-			system("mv New Old");
-			system("mkdir New");
+			fprintf(stderr,"	enter roll\n");
+			sprintf(name,"Old%d",LoopTimes);
+			rename("Old", name);		
+			rename("New","Old");
+			mkdir("New",0700);
 			for(u_s ID = 0; ID < ValidNodeNum; ID ++){
+				AllNodeVector[ID] -> VisitType = 0;
 				LeftTimesVector[ID] = AllNodeVector[ID]->AdjList.size();
 				LeftTimesVector[ID] ++;
 				MOldPathDB[ID] = MNewPathDB[ID];
@@ -211,6 +227,12 @@ class mMap{
 			OInMemoList = NInMemoList;
 			NInMemoList.clear();
 		}
+		void roll_record(){
+			while(!OInMemoList.empty()){
+				write_to_disk(OInMemoList.front(), 0);
+				OInMemoList.pop_front();
+			}
+		}
 		void roll(u_s ID){
 			LeftTimesVector[ID] = AllNodeVector[ID]->AdjList.size();
 			LeftTimesVector[ID] ++;
@@ -220,49 +242,52 @@ class mMap{
 };
 
 void node::bgp_update(bool u_sign = 0){
-	bool ChangedInThisLoop;
-	u_s TmpPathLength;
-	u_s MarkedID;
 	OldPathVector = Map->get(ID); 
 	NewPathVector = new vector<path>(*OldPathVector);
 	PathInMemo ++;
 	vector<path> * TmpPathVector;
-	vector<path> * MarkedPathVector;
-	fprintf(stderr,"			 enter update: %d\n", ID);
-	for( u_s i = 0; i < ValidNodeNum; i ++){
-	//	fprintf(stderr,"			   within update: <%d -> %d>\n", ID, i);
-		ChangedInThisLoop = 0;
-		if(find(AdjList.begin(), AdjList.end(), i) != AdjList.end())	
+
+	ValidVector.assign(ValidNodeNum, 0);
+	for(vector<u_s>::iterator Adj=AdjList.begin(); Adj!=AdjList.end(); Adj++)
+		ValidVector[*Adj] = 1;
+	CNVector.assign(ValidNodeNum, 0);
+	TmpPLVector.assign(ValidNodeNum, NodeNum + 2);
+	for(u_s i = 0; i < ValidNodeNum; i ++){
+		if((*NewPathVector)[i].Validity)
+			TmpPLVector[i] = (*NewPathVector)[i].Path.size();
+	}
+	for(vector<u_s>::iterator Adj=AdjList.begin(); Adj!=AdjList.end(); Adj++){
+		if(u_sign){
+			if(!AllNodeVector[*Adj]->IsInSDN)
 				continue;
-		OldPathVector = Map->get(ID); 
-		if(!(*OldPathVector)[i].Validity)
-				TmpPathLength = NodeNum + NodeNum;
-		else
-				TmpPathLength = (*OldPathVector)[i].Path.size();
-		for(vector<u_s>::iterator Adj=AdjList.begin(); Adj!=AdjList.end(); Adj++){
-				if(u_sign){
-					if(!AllNodeVector[*Adj]->IsInSDN)
-						continue;
-				}
-				TmpPathVector = Map->get(*Adj);
-				if(!(*TmpPathVector)[i].Validity)
-						continue;
-				if(find((*TmpPathVector)[i].Path.begin(), (*TmpPathVector)[i].Path.end(),ID) != (*TmpPathVector)[i].Path.end())
-						continue;
-				if((*TmpPathVector)[i].Path.size() + 1 < TmpPathLength){
-						TmpPathLength = (*TmpPathVector)[i].Path.size() + 1;
-						MarkedID = *Adj;
-						ChangedInThisLoop = 1;
-				}
 		}
-		if(ChangedInThisLoop){
-				MarkedPathVector = Map->get(MarkedID);
+		TmpPathVector = Map->get(*Adj);
+		for( u_s i = 0; i < ValidNodeNum; i ++){
+			if(ValidVector[i])
+				continue;
+			if(!(*TmpPathVector)[i].Validity)
+				continue;
+			if(find((*TmpPathVector)[i].Path.begin(), (*TmpPathVector)[i].Path.end(),ID) != (*TmpPathVector)[i].Path.end())
+				continue;
+			if(!(*NewPathVector)[i].Validity){
 				(*NewPathVector)[i].Validity = 1;
-				(*NewPathVector)[i].Path = (*MarkedPathVector)[i].Path;
-				(*NewPathVector)[i].Path.push_back(ID);
+				CNVector[i] = *Adj + 1;
+				TmpPLVector[i] = (*TmpPathVector)[i].Path.size() + 1;
 				IsChanged = 1;
+			}else if((*TmpPathVector)[i].Path.size() + 1 < TmpPLVector[i]){
+				CNVector[i] = *Adj + 1;
+				TmpPLVector[i] = (*TmpPathVector)[i].Path.size() + 1;
+				IsChanged = 1;
+			}
 		}
-	}	
+	}
+	for(u_s i = 0; i < ValidNodeNum; i ++){
+		if(CNVector[i]){
+			(*NewPathVector)[i].Path = (*(Map->get(CNVector[i]-1)))[i].Path;
+			(*NewPathVector)[i].Path.push_back(ID);
+		}
+	}
+
 	for( u_s i = 0; i < AdjList.size(); i ++){
 		if(u_sign)
 			if(!AllNodeVector[AdjList[i]]->IsInSDN)
@@ -333,8 +358,14 @@ int main(int argc, char * argv[]){
 		fprintf(stderr,"error! not enough args\n");
 		exit(-1);
 	}
-	system("mkdir -p New");
-	system("mkdir -p Old");
+	rename("Old","Old_before");
+	rename("New","New_before");
+//	system("/bin/rm -rf New");
+//	system("/bin/rm -rf Old");
+	mkdir("Old",0700);
+	mkdir("New",0700);
+//	system("mkdir -p New");
+//	system("mkdir -p Old");
 	SDNRatio = atoi(argv[2])/1000.0;
 	RandSeed = atoi(argv[3]);
 	RepeatTimes = atoi(argv[4]);
@@ -383,19 +414,39 @@ void inject_up(u_s p){
 
 u_s converge_process(bool sign){
 	LoopTimes = 0;
+	u_s CurrentNode = 0;
+	u_s CurrentNb = 0;
 	while(1){
 		fprintf(stderr," LoopTimes: %d\n", LoopTimes);
 		IsChanged = 0;
-		for(u_s i=0; i < ValidNodeNum; i++){
-			AllNodeVector[i]->bgp_update();
-			fprintf(stderr,"	-LP:%d	bgpupdate: %d over\n",LoopTimes, i);
+		for( u_s k = 0; k < ValidNodeNum; k ++){
+			if(!AllNodeVector[k]->VisitType){
+				AllNodeVector[k]->VisitType = 1;
+				Stack.push(k);
+				while(!Stack.empty()){
+					CurrentNode = Stack.top();
+					Stack.pop();
+					AllNodeVector[CurrentNode]->bgp_update();
+					fprintf(stderr,"	   -LP:%d	bgpupdate: %d over\n",LoopTimes, CurrentNode);
+					for(u_s i = 0; i < AllNodeVector[CurrentNode]->AdjList.size(); i ++){
+						CurrentNb = AllNodeVector[CurrentNode]->AdjList[i];
+						if(AllNodeVector[CurrentNb]->VisitType)
+							continue;
+						AllNodeVector[CurrentNb]->VisitType = 1;
+						Stack.push(CurrentNb);
+					}
+				}	
+			}
 		}
+
 		Map->roll_all();
 		if(sign)
 			MySDN->local_converge();	
 		LoopTimes = LoopTimes + 1;
-		if(!IsChanged)
+		if(!IsChanged){
+			Map->roll_record();	
 			break;
+		}
 	}
 	return LoopTimes;
 }
@@ -419,7 +470,7 @@ void myprint_path(){
 
 void create_adj(){
 	FILE * fp;
-	fp = fopen("real.data", "r");
+	fp = fopen("small.data", "r");
 	if(fp == NULL){
 		fprintf(stderr,"Error open small.data\n");
 		exit(-1);

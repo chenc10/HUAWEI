@@ -22,10 +22,10 @@ class node;
 class SDN;
 class mMap;
 
-u_s NodeNum = 43548;
-//u_s NodeNum = 2749;
-u_s ValidNodeNum = 43548;
-//u_s ValidNodeNum = 2749;
+//u_s NodeNum = 43548;
+u_s NodeNum = 2749;
+//u_s ValidNodeNum = 43548;
+u_s ValidNodeNum = 2749;
 bool IsChanged = 0;
 u_s RepeatTimes = -1;
 int RandSeed = 0;
@@ -38,6 +38,9 @@ int BatchNum = 1000;
 
 SDN * MySDN;
 vector<node *> AllNodeVector;
+vector<bool> ValidVector;
+vector<u_s> CNVector;
+vector<u_s> TmpPLVector;
 stack<u_s> Stack;
 mMap *Map;
 
@@ -239,47 +242,52 @@ class mMap{
 };
 
 void node::bgp_update(bool u_sign = 0){
-	bool ChangedInThisLoop;
-	u_s TmpPathLength;
-	u_s MarkedID;
 	OldPathVector = Map->get(ID); 
 	NewPathVector = new vector<path>(*OldPathVector);
 	PathInMemo ++;
 	vector<path> * TmpPathVector;
-	vector<path> * MarkedPathVector;
-	for( u_s i = 0; i < ValidNodeNum; i ++){
-		ChangedInThisLoop = 0;
-		if(find(AdjList.begin(), AdjList.end(), i) != AdjList.end())	
+
+	ValidVector.assign(ValidNodeNum, 0);
+	for(vector<u_s>::iterator Adj=AdjList.begin(); Adj!=AdjList.end(); Adj++)
+		ValidVector[*Adj] = 1;
+	CNVector.assign(ValidNodeNum, 0);
+	TmpPLVector.assign(ValidNodeNum, NodeNum + 2);
+	for(u_s i = 0; i < ValidNodeNum; i ++){
+		if((*NewPathVector)[i].Validity)
+			TmpPLVector[i] = (*NewPathVector)[i].Path.size();
+	}
+	for(vector<u_s>::iterator Adj=AdjList.begin(); Adj!=AdjList.end(); Adj++){
+		if(u_sign){
+			if(!AllNodeVector[*Adj]->IsInSDN)
 				continue;
-		OldPathVector = Map->get(ID); 
-		if(!(*OldPathVector)[i].Validity)
-				TmpPathLength = NodeNum + NodeNum;
-		else
-				TmpPathLength = (*OldPathVector)[i].Path.size();
-		for(vector<u_s>::iterator Adj=AdjList.begin(); Adj!=AdjList.end(); Adj++){
-				if(u_sign){
-					if(!AllNodeVector[*Adj]->IsInSDN)
-						continue;
-				}
-				TmpPathVector = Map->get(*Adj);
-				if(!(*TmpPathVector)[i].Validity)
-						continue;
-				if(find((*TmpPathVector)[i].Path.begin(), (*TmpPathVector)[i].Path.end(),ID) != (*TmpPathVector)[i].Path.end())
-						continue;
-				if((*TmpPathVector)[i].Path.size() + 1 < TmpPathLength){
-						TmpPathLength = (*TmpPathVector)[i].Path.size() + 1;
-						MarkedID = *Adj;
-						ChangedInThisLoop = 1;
-				}
 		}
-		if(ChangedInThisLoop){
-				MarkedPathVector = Map->get(MarkedID);
+		TmpPathVector = Map->get(*Adj);
+		for( u_s i = 0; i < ValidNodeNum; i ++){
+			if(ValidVector[i])
+				continue;
+			if(!(*TmpPathVector)[i].Validity)
+				continue;
+			if(find((*TmpPathVector)[i].Path.begin(), (*TmpPathVector)[i].Path.end(),ID) != (*TmpPathVector)[i].Path.end())
+				continue;
+			if(!(*NewPathVector)[i].Validity){
 				(*NewPathVector)[i].Validity = 1;
-				(*NewPathVector)[i].Path = (*MarkedPathVector)[i].Path;
-				(*NewPathVector)[i].Path.push_back(ID);
+				CNVector[i] = *Adj + 1;
+				TmpPLVector[i] = (*TmpPathVector)[i].Path.size() + 1;
 				IsChanged = 1;
+			}else if((*TmpPathVector)[i].Path.size() + 1 < TmpPLVector[i]){
+				CNVector[i] = *Adj + 1;
+				TmpPLVector[i] = (*TmpPathVector)[i].Path.size() + 1;
+				IsChanged = 1;
+			}
 		}
-	}	
+	}
+	for(u_s i = 0; i < ValidNodeNum; i ++){
+		if(CNVector[i]){
+			(*NewPathVector)[i].Path = (*(Map->get(CNVector[i]-1)))[i].Path;
+			(*NewPathVector)[i].Path.push_back(ID);
+		}
+	}
+
 	for( u_s i = 0; i < AdjList.size(); i ++){
 		if(u_sign)
 			if(!AllNodeVector[AdjList[i]]->IsInSDN)
@@ -462,7 +470,7 @@ void myprint_path(){
 
 void create_adj(){
 	FILE * fp;
-	fp = fopen("real.data", "r");
+	fp = fopen("small.data", "r");
 	if(fp == NULL){
 		fprintf(stderr,"Error open small.data\n");
 		exit(-1);
