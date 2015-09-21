@@ -102,11 +102,11 @@ class SDN{
 		u_s Size;
 		vector<u_s> AsVector;
 		SDN(u_s SdnSize){
+			Size = 0;
 			if(!SdnSize)
 				return;
 			if(SdnSize > ValidNodeNum)
 				return;
-			Size = 0;
 			u_s CurrentNodeID;
 			AsVector.assign(SdnSize,-1); 
 			list<u_s> Queue;
