@@ -170,7 +170,7 @@ int main(int argc, char * argv[]){
 		FinalLen[i] = 0;
 	}
 	CT = 0;
-	for(u_s i=0; /*SDN_Size < 0.98*NodeNum */; i ++ ){
+	for(u_s i=0; SDN_Size <= NodeNum ; i ++ ){
 		oldsize = SDN_Size;
 		SDN_Size = MySDN->set(i);
 	//	fprintf(stderr," SDNSize: %d, last: %d\n", SDN_Size, last);
