@@ -25,7 +25,7 @@ u_s RepeatTimes = -1;
 int RandSeed = 0;
 float SDNRatio = -0.1;
 u_s * SortVector;
-u_s * CT;
+int  CT;
 u_s * FinalLen;
 
 char IBuffer[70000];
@@ -157,7 +157,8 @@ int main(int argc, char * argv[]){
 
 	create_adj();
 
-	IP = u_s(NodeNum*(rand()%100/100.0));
+//	IP = u_s(NodeNum*(rand()%100/100.0));
+	IP = rand()%NodeNum;
 	fprintf(stderr,"#chosen node: %d\n", IP);
 	AllNodeVector[IP]->NewPathVector.Validity = 1;
 
@@ -169,8 +170,21 @@ int main(int argc, char * argv[]){
 	for( u_s i = 0; i < NodeNum; i ++){
 		FinalLen[i] = 0;
 	}
+	CT = -1;
+	converge_process();
+	for( u_s j = 0; j < NodeNum; j ++){
+		if(!AllNodeVector[j]->NewPathVector.Validity){
+			fprintf(stderr,"Error, error\n");
+			exit(-1);
+		}
+		FinalLen[j] = AllNodeVector[j]->NewPathVector.Path.size();
+	}
+	for( u_s j=0; j < NodeNum; j ++){
+		AllNodeVector[j]->NewPathVector = path(j);
+	}	
+	AllNodeVector[IP]->NewPathVector.Validity = 1;
 	CT = 0;
-	for(u_s i=0; SDN_Size <= NodeNum ; i ++ ){
+	for(u_s i=0; SDN_Size < 0.99 * NodeNum ; i ++ ){
 		oldsize = SDN_Size;
 		SDN_Size = MySDN->set(i);
 	//	fprintf(stderr," SDNSize: %d, last: %d\n", SDN_Size, last);
