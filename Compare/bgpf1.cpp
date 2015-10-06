@@ -290,7 +290,7 @@ void create_adj( ){
 	//qsort( SortVector, NodeNum, sizeof(u_s),compare);
 	for(u_s i = 0; i < NodeNum; i ++){
 		SortVector2[i] = rand()%NodeNum;
-		fprintf(stderr," S: %d\n", SortVector2[i]);
+//		fprintf(stderr," S: %d\n", SortVector2[i]);
 	}
 	qsort( SortVector, NodeNum, sizeof(u_s),compare2);
 //	for(u_s i = 0; i < NodeNum; i ++)
