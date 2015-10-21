@@ -278,7 +278,7 @@ void create_adj( ){
 	}
 	fclose(fp);
 	SortVector = new u_s [NodeNum];
-	fp = fopen("weight.data", "r");
+	fp = fopen("incremental.list", "r");
 	if(fp == NULL){
 		fprintf(stderr,"Error open small.data\n");
 		exit(-1);
