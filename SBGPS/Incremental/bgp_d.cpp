@@ -278,9 +278,16 @@ void create_adj( ){
 	}
 	fclose(fp);
 	SortVector = new u_s [NodeNum];
-	for(u_s i = 0; i < NodeNum; i ++)
-	       SortVector[i] = i;
-	qsort( SortVector, NodeNum, sizeof(u_s),compare);
+	fp = fopen("weight.data", "r");
+	if(fp == NULL){
+		fprintf(stderr,"Error open small.data\n");
+		exit(-1);
+	}
+	for( u_s i = 0; i < NodeNum; i ++){
+		fgets(IBuffer, 70000, fp);
+		SortVector[i] = atoi(IBuffer);
+	}
+	fclose(fp);
 //	for(u_s i = 0; i < NodeNum; i ++)
 //		fprintf(stderr,"%d ", SortVector[i]);
 //	fprintf(stderr,"\n");
